@@ -758,8 +758,8 @@
 
   async function loadStudyLog(){
     try{
-      const res = await window.storage.get(studyLogKey(state.date), false);
-      state.studyLog = res && res.value ? JSON.parse(res.value) : {};
+      const raw = localStorage.getItem(studyLogKey(state.date));
+      state.studyLog = raw ? JSON.parse(raw) : {};
     }catch(e){
       state.studyLog = {};
     }
@@ -769,7 +769,7 @@
   async function saveStudyLogData(data){
     state.studyLog = data;
     try{
-      await window.storage.set(studyLogKey(state.date), JSON.stringify(data), false);
+      localStorage.setItem(studyLogKey(state.date), JSON.stringify(data));
     }catch(e){ /* 保存できなくても操作は継続 */ }
     renderStudyLogBar();
   }
@@ -865,8 +865,8 @@
 
   async function loadEvents(){
     try{
-      const res = await window.storage.get(storageKey(state.date), false);
-      state.events = res && res.value ? JSON.parse(res.value) : [];
+      const raw = localStorage.getItem(storageKey(state.date));
+      state.events = raw ? JSON.parse(raw) : [];
     }catch(e){
       state.events = [];
     }
@@ -875,7 +875,7 @@
 
   async function saveEvents(){
     try{
-      await window.storage.set(storageKey(state.date), JSON.stringify(state.events), false);
+      localStorage.setItem(storageKey(state.date), JSON.stringify(state.events));
     }catch(e){ /* 保存できなくても操作は継続 */ }
   }
 
@@ -944,8 +944,8 @@
 
   async function loadTodos(){
     try{
-      const res = await window.storage.get(todoKey(state.date), false);
-      state.todos = res && res.value ? JSON.parse(res.value) : [];
+      const raw = localStorage.getItem(todoKey(state.date));
+      state.todos = raw ? JSON.parse(raw) : [];
     }catch(e){
       state.todos = [];
     }
@@ -954,7 +954,7 @@
 
   async function saveTodos(){
     try{
-      await window.storage.set(todoKey(state.date), JSON.stringify(state.todos), false);
+      localStorage.setItem(todoKey(state.date), JSON.stringify(state.todos));
     }catch(e){ /* 保存できなくても操作は継続 */ }
   }
 
@@ -1035,12 +1035,14 @@
   async function daysWithEventsInMonth(year, month){
     const daySet = new Set();
     try{
-      const res = await window.storage.list(monthPrefix(year, month), false);
-      const keys = (res && res.keys) || [];
-      keys.forEach(k=>{
-        const m = k.match(/schedule:\d{4}-\d{2}-(\d{2})$/);
-        if(m) daySet.add(parseInt(m[1], 10));
-      });
+      const prefix = monthPrefix(year, month);
+      for(let i=0; i<localStorage.length; i++){
+        const k = localStorage.key(i);
+        if(k && k.indexOf(prefix) === 0){
+          const m = k.match(/schedule:\d{4}-\d{2}-(\d{2})$/);
+          if(m) daySet.add(parseInt(m[1], 10));
+        }
+      }
     }catch(e){ /* 一覧取得に失敗しても表示は継続 */ }
     return daySet;
   }
@@ -1318,10 +1320,23 @@
       micBtn.classList.remove('listening');
       listeningHint.style.display = 'none';
     };
-    recognizer.onerror = ()=>{
+    recognizer.onerror = (event)=>{
       recognizing = false;
       micBtn.classList.remove('listening');
       listeningHint.style.display = 'none';
+      if(event.error === 'aborted') return;
+      const messages = {
+        'no-speech': '音声が検出されませんでした。もう一度お試しください。',
+        'audio-capture': 'マイクを利用できません。他のアプリがマイクを使用していないか確認してください。',
+        'not-allowed': 'マイクの使用が許可されていません。サイトの設定でマイクを許可してください。',
+        'network': 'ネットワークエラーです。音声認識にはインターネット接続が必要です。',
+        'service-not-allowed': '音声認識サービスを利用できませんでした。'
+      };
+      const msg = messages[event.error] || ('音声認識エラー: '+event.error);
+      unsupportedNote.textContent = msg;
+      unsupportedNote.style.display = 'block';
+      clearTimeout(window.__errNoteTimer);
+      window.__errNoteTimer = setTimeout(()=>{ unsupportedNote.style.display = 'none'; }, 5000);
     };
     recognizer.onresult = (event)=>{
       const text = event.results[0][0].transcript;
